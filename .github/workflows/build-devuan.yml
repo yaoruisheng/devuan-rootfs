@@ -28,8 +28,8 @@ jobs:
             --include=sysv-rc,wget,curl,procps,dropbear,nano,iproute2,devuan-keyring \
             --foreign --no-check-gpg stable $GITHUB_WORKSPACE/devuan_arm64 http://deb.devuan.org/merged
 
-          echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" > $GITHUB_WORKSPACE/devuan_arm64/etc/resolv.conf
-          echo "deb http://mirrors.tuna.tsinghua.edu.cn/devuan/merged stable main" > $GITHUB_WORKSPACE/devuan_arm64/etc/apt/sources.list
+          echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" | sudo tee $GITHUB_WORKSPACE/devuan_arm64/etc/resolv.conf
+          echo "deb http://mirrors.tuna.tsinghua.edu.cn/devuan/merged stable main" | sudo tee $GITHUB_WORKSPACE/devuan_arm64/etc/apt/sources.list
 
       - name: Build Devuan ARMHF rootfs
         run: |
@@ -37,13 +37,17 @@ jobs:
             --include=sysv-rc,wget,curl,procps,dropbear,nano,iproute2,devuan-keyring \
             --foreign --no-check-gpg stable $GITHUB_WORKSPACE/devuan_armhf http://deb.devuan.org/merged
 
-          echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" > $GITHUB_WORKSPACE/devuan_armhf/etc/resolv.conf
-          echo "deb http://mirrors.tuna.tsinghua.edu.cn/devuan/merged stable main" > $GITHUB_WORKSPACE/devuan_armhf/etc/apt/sources.list
+          echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" | sudo tee $GITHUB_WORKSPACE/devuan_armhf/etc/resolv.conf
+          echo "deb http://mirrors.tuna.tsinghua.edu.cn/devuan/merged stable main" | sudo tee $GITHUB_WORKSPACE/devuan_armhf/etc/apt/sources.list
 
       - name: Compress rootfs archives
         run: |
           tar czlpf $GITHUB_WORKSPACE/devuan.arm64.tar.gz -C $GITHUB_WORKSPACE/devuan_arm64 .
           tar czlpf $GITHUB_WORKSPACE/devuan.armhf.tar.gz -C $GITHUB_WORKSPACE/devuan_armhf .
+
+      - name: Show archive sizes
+        run: |
+          ls -lh $GITHUB_WORKSPACE/devuan.arm64.tar.gz $GITHUB_WORKSPACE/devuan.armhf.tar.gz
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
