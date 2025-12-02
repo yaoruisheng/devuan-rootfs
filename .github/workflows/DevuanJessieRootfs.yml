@@ -1,0 +1,97 @@
+name: Build Devuan Jessie Rootfs (armel/armhf/arm64)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap tar curl wget qemu-user-static
+
+      - name: Prepare directories
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/devuan_armel
+          mkdir -p $GITHUB_WORKSPACE/devuan_armhf
+          mkdir -p $GITHUB_WORKSPACE/devuan_arm64
+
+      ###########################################
+      #              ARMEL (软浮点)             #
+      ###########################################
+      - name: Build Devuan Jessie armel rootfs
+        run: |
+          sudo debootstrap --verbose --arch=armel --variant=minbase \
+            --include=sysv-rc,wget,curl,procps,dropbear,nano,iproute2,devuan-keyring \
+            --foreign --no-check-gpg jessie \
+            $GITHUB_WORKSPACE/devuan_armel \
+            http://archive.devuan.org/merged
+
+          echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" | sudo tee $GITHUB_WORKSPACE/devuan_armel/etc/resolv.conf
+          echo "deb http://archive.devuan.org/merged jessie main" | sudo tee $GITHUB_WORKSPACE/devuan_armel/etc/apt/sources.list
+
+      ###########################################
+      #              ARMHF (硬浮点)             #
+      ###########################################
+      - name: Build Devuan Jessie armhf rootfs
+        run: |
+          sudo debootstrap --verbose --arch=armhf --variant=minbase \
+            --include=sysv-rc,wget,curl,procps,dropbear,nano,iproute2,devuan-keyring \
+            --foreign --no-check-gpg jessie \
+            $GITHUB_WORKSPACE/devuan_armhf \
+            http://archive.devuan.org/merged
+
+          echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" | sudo tee $GITHUB_WORKSPACE/devuan_armhf/etc/resolv.conf
+          echo "deb http://archive.devuan.org/merged jessie main" | sudo tee $GITHUB_WORKSPACE/devuan_armhf/etc/apt/sources.list
+
+      ###########################################
+      #                ARM64                   #
+      ###########################################
+      - name: Build Devuan Jessie arm64 rootfs
+        run: |
+          sudo debootstrap --verbose --arch=arm64 --variant=minbase \
+            --include=sysv-rc,wget,curl,procps,dropbear,nano,iproute2,devuan-keyring \
+            --foreign --no-check-gpg jessie \
+            $GITHUB_WORKSPACE/devuan_arm64 \
+            http://archive.devuan.org/merged
+
+          echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" | sudo tee $GITHUB_WORKSPACE/devuan_arm64/etc/resolv.conf
+          echo "deb http://archive.devuan.org/merged jessie main" | sudo tee $GITHUB_WORKSPACE/devuan_arm64/etc/apt/sources.list
+
+      ###########################################
+      #            打包三个 rootfs              #
+      ###########################################
+      - name: Compress rootfs archives
+        run: |
+          sudo tar --numeric-owner -czf $GITHUB_WORKSPACE/devuan.jessie.armel.tar.gz -C $GITHUB_WORKSPACE/devuan_armel .
+          sudo tar --numeric-owner -czf $GITHUB_WORKSPACE/devuan.jessie.armhf.tar.gz -C $GITHUB_WORKSPACE/devuan_armhf .
+          sudo tar --numeric-owner -czf $GITHUB_WORKSPACE/devuan.jessie.arm64.tar.gz -C $GITHUB_WORKSPACE/devuan_arm64 .
+
+      - name: Show archive sizes
+        run: |
+          ls -lh $GITHUB_WORKSPACE/devuan.jessie.armel.tar.gz
+          ls -lh $GITHUB_WORKSPACE/devuan.jessie.armhf.tar.gz
+          ls -lh $GITHUB_WORKSPACE/devuan.jessie.arm64.tar.gz
+
+      ###########################################
+      #               GitHub Release            #
+      ###########################################
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "jessie-all-${{ github.run_number }}"
+          name: "Devuan Jessie Rootfs (armel/armhf/arm64) #${{ github.run_number }}"
+          files: |
+            devuan.jessie.armel.tar.gz
+            devuan.jessie.armhf.tar.gz
+            devuan.jessie.arm64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
