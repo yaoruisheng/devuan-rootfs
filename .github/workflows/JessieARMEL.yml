@@ -1,0 +1,56 @@
+name: Build Devuan Jessie armel Rootfs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap tar curl wget
+
+      - name: Prepare directories
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/devuan_armel
+
+      - name: Build Devuan Jessie armel rootfs
+        run: |
+          sudo debootstrap --verbose --arch=armel --variant=minbase \
+            --include=sysv-rc,wget,curl,procps,dropbear,nano,iproute2,devuan-keyring \
+            --foreign --no-check-gpg jessie \
+            $GITHUB_WORKSPACE/devuan_armel \
+            http://archive.devuan.org/merged
+
+          # 配置 DNS
+          echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" | sudo tee $GITHUB_WORKSPACE/devuan_armel/etc/resolv.conf
+
+          # Jessie 已经进入 archive，只能用 archive.devuan.org
+          echo "deb http://archive.devuan.org/merged jessie main" | sudo tee $GITHUB_WORKSPACE/devuan_armel/etc/apt/sources.list
+
+      - name: Compress rootfs archive
+        run: |
+          sudo tar --numeric-owner -czf $GITHUB_WORKSPACE/devuan.jessie.armel.tar.gz \
+            -C $GITHUB_WORKSPACE/devuan_armel .
+
+      - name: Show archive size
+        run: |
+          ls -lh $GITHUB_WORKSPACE/devuan.jessie.armel.tar.gz
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "jessie-armel-${{ github.run_number }}"
+          name: "Devuan Jessie armel Rootfs #${{ github.run_number }}"
+          files: |
+            devuan.jessie.armel.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
