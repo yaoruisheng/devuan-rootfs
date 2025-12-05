@@ -1,16 +1,14 @@
 name: Build Debian ARM Root Filesystems
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      # 确保构建任务有写入权限来上传 Artifacts
+      contents: write 
 
     steps:
       - name: Checkout repository
@@ -50,11 +48,12 @@ jobs:
       - name: Run Debian ARM64 rootfs (Stage 2) via QEMU
         run: |
           ROOTFS_DIR=$GITHUB_WORKSPACE/debian_arm64
-          # CRITICAL: Copy QEMU static binary into the rootfs for emulation
+          # CRITICAL: Copy QEMU static binary into the rootfs for emulation.
+          # 这是必需的，因为 binfmt_misc 必须在 chroot 环境中找到 QEMU 解释器。
           sudo cp /usr/bin/qemu-aarch64-static $ROOTFS_DIR/usr/bin/
           
           # Stage 2: Complete package configuration inside the emulated environment
-          # Use binfmt_misc to allow chroot execution of ARM binaries
+          # 此步骤依赖于宿主机（Runner）中已配置的 binfmt_misc 机制来自动执行 ARM 二进制文件。
           sudo chroot $ROOTFS_DIR /debootstrap/debootstrap --second-stage
           
       - name: Cleanup QEMU binary (ARM64)
@@ -90,6 +89,7 @@ jobs:
           sudo cp /usr/bin/qemu-arm-static $ROOTFS_DIR/usr/bin/
           
           # Stage 2: Complete package configuration inside the emulated environment
+          # 此步骤依赖于宿主机（Runner）中已配置的 binfmt_misc 机制来自动执行 ARM 二进制文件。
           sudo chroot $ROOTFS_DIR /debootstrap/debootstrap --second-stage
 
       - name: Cleanup QEMU binary (ARMHF)
@@ -125,6 +125,7 @@ jobs:
           sudo cp /usr/bin/qemu-arm-static $ROOTFS_DIR/usr/bin/
           
           # Stage 2: Complete package configuration inside the emulated environment
+          # 此步骤依赖于宿主机（Runner）中已配置的 binfmt_misc 机制来自动执行 ARM 二进制文件。
           sudo chroot $ROOTFS_DIR /debootstrap/debootstrap --second-stage
 
       - name: Cleanup QEMU binary (ARMEL)
@@ -148,3 +149,47 @@ jobs:
             debian-arm64-rootfs.tar.gz
             debian-armhf-rootfs.tar.gz
             debian-armel-rootfs.tar.gz
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    # 依赖于 build 任务，确保所有文件系统都已生成
+    needs: build 
+    # 删除了冗余的 if 条件，因为整个工作流只能通过 workflow_dispatch 触发
+    permissions:
+      # 必须要有 contents: write 权限才能创建 Release 和 Tag
+      contents: write 
+      
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: debian-rootfs-archives
+          path: ./release_artifacts
+
+      - name: Get current date and generate Release Tag
+        id: date
+        run: echo "RELEASE_TAG=v$(date +'%Y.%m.%d').${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      - name: Create Release and Upload Artifacts
+        uses: softprops/action-gh-release@v1
+        env:
+          # 使用内置的 GITHUB_TOKEN 进行认证
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.date.outputs.RELEASE_TAG }}
+          name: Debian ARM RootFS Build ${{ steps.date.outputs.RELEASE_TAG }}
+          body: |
+            ## 🚀 自动化生成的 Debian ARM Root Filesystem
+            
+            此版本包含以下架构的最小化（minbase）根文件系统：
+            
+            - **ARM64 (AArch64)**：适用于 64 位 ARM 设备。
+            - **ARMHF (ARMv7 Hard Float)**：适用于较新的 32 位 ARM 设备，带硬浮点支持。
+            - **ARMEL (ARMv6/ARMv7 Soft Float)**：适用于较旧或资源受限的 32 位 ARM 设备，带软浮点支持。
+
+            **系统配置要点:**
+            - 包含 `sysvinit-core`、`dropbear` 等基本组件。
+            - 禁用了 `systemd`。
+          files: |
+            ./release_artifacts/*.tar.gz
