@@ -40,9 +40,9 @@ jobs:
         run: |
           mkdir -p "$ROOTFS_DIR"
 
-          # Stage 1: 下载和提取包
+          # Stage 1: 下载和提取包（包含所有必需的 sysvinit 核心组件和工具）
           sudo debootstrap --verbose --arch=${{ matrix.arch }} --variant=minbase \
-            --include=sysvinit-core,sysv-rc,libpam-elogind,dropbear,nano,wget,curl,procps,iproute2,dbus-x11,chrony \
+            --include=sysvinit-core,sysv-rc,dropbear,nano,wget,curl,procps,iproute2,dbus-x11,chrony,libpam-elogind,rsyslog,net-tools,util-linux,e2fsprogs,locales \
             --foreign \
             stable "$ROOTFS_DIR" http://deb.debian.org/debian
 
@@ -53,7 +53,7 @@ jobs:
           echo "deb http://mirrors.huaweicloud.com/debian stable main contrib non-free non-free-firmware" \
             | sudo tee "$ROOTFS_DIR/etc/apt/sources.list"
 
-          # 禁用 systemd 系列包 (使用 echo -e 模式)
+          # 禁用 systemd 系列包 (APT Pinning)
           echo -e "Package: systemd*\nPin: version *\nPin-Priority: -1\n\nPackage: libsystemd*\nPin: version *\nPin-Priority: -1\n\nPackage: udev\nPin: version *\nPin-Priority: -1" | sudo tee "$ROOTFS_DIR/etc/apt/preferences.d/00-nosystemd"
 
           # 修复 debootstrap 的小 bug
@@ -97,8 +97,26 @@ jobs:
             usermod -G _chrony -g aid_inet _chrony
           '
           
+          # 4. 生成 Locales (支持中文和 UTF-8)
+          sudo chroot "$ROOTFS_DIR" /bin/bash -c '
+            echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+            echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen
+            locale-gen
+            update-locale LANG=en_US.UTF-8
+          '
+          
           echo "--- Custom configurations finished ---"
           # ------------------------------------------------------------------
+          
+          # ------------------------------------------------------------------
+          # 🧹 清理 APT 缓存和临时文件 (消除非确定性和减小体积)
+          # ------------------------------------------------------------------
+          echo "--- Cleaning up APT cache and temporary files ---"
+          sudo chroot "$ROOTFS_DIR" /bin/bash -c '
+            apt-get clean
+            rm -rf /var/log/*
+            rm -rf /tmp/*
+          '
 
           # 卸载虚拟文件系统 (chroot 后)
           sudo umount -lf "$ROOTFS_DIR/proc" || true
@@ -173,5 +191,6 @@ jobs:
             - 默认 sysvinit
             - 完全禁用 systemd (通过 APT Pinning)
             - minbase 精简构建
-            - **自定义组配置**：添加了 GIDs 3001-3005 的系统组，并调整了 `_apt` 和 `_chrony` 用户的组。
+            - **核心工具：** 包含 rsyslog, net-tools, util-linux, e2fsprogs 等必要的系统管理工具。
+            - **中文支持：** 已生成 zh_CN.UTF-8 locale。
           files: ./release_artifacts/*.tar.gz
